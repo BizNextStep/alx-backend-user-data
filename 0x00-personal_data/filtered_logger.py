@@ -70,3 +70,31 @@ def get_db() -> mysql.connector.connection.MySQLConnection:
         logger = get_logger()
         logger.error(f"Error connecting to database: {e}")
         return None
+
+
+def main():
+    """
+    Main function to retrieve and log user data from the database.
+    """
+    logger = get_logger()
+    db = get_db()
+    if db is None:
+        logger.error("Failed to connect to the database.")
+        return
+
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users;")
+    rows = cursor.fetchall()
+
+    for row in rows:
+        # Prepare the log message
+        log_message = "; ".join(f"{key}={value}" for key, value in row.items())
+        # Log the filtered message
+        logger.info(log_message)
+
+    cursor.close()
+    db.close()
+
+
+if __name__ == "__main__":
+    main()
