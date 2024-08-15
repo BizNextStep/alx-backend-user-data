@@ -1,34 +1,43 @@
 #!/usr/bin/env python3
 """DB module
-This module provides the DB class for managing database interactions using SQLAlchemy.
+This module provides the DB class for managing user data in a SQLite database using SQLAlchemy.
 """
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm.session import Session
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm.exc import NoResultFound
 from user import Base, User
+from typing import TypeVar
+
+# List of valid fields for user queries and updates
+VALID_FIELDS = ['id', 'email', 'hashed_password', 'session_id', 'reset_token']
 
 
 class DB:
-    """DB class
-    This class handles the database connection and user management.
+    """
+    DB class.
+    This class handles database operations related to user management, including adding,
+    finding, and updating users.
     """
 
-    def __init__(self) -> None:
-        """Initialize a new DB instance
-        This constructor sets up the database engine and creates the necessary tables.
+    def __init__(self):
         """
-        self._engine = create_engine("sqlite:///a.db", echo=True)
+        Constructor.
+        Initializes the database engine and creates the necessary tables.
+        """
+        self._engine = create_engine("sqlite:///a.db", echo=False)
         Base.metadata.drop_all(self._engine)
         Base.metadata.create_all(self._engine)
         self.__session = None
 
     @property
-    def _session(self) -> Session:
-        """Memoized session object
-        This property creates and returns a new session if one does not already exist.
+    def _session(self):
+        """
+        _session property.
+        Returns a session object for interacting with the database. Creates a new session
+        if one does not already exist.
         """
         if self.__session is None:
             DBSession = sessionmaker(bind=self._engine)
@@ -36,22 +45,29 @@ class DB:
         return self.__session
 
     def add_user(self, email: str, hashed_password: str) -> User:
-        """Add a new user to the database and return the User object.
+        """
+        add_user method.
+        Adds a new user to the database with the given email and hashed password.
         
         Args:
-            email (str): The user's email address.
-            hashed_password (str): The user's hashed password.
+            email (str): The email address of the user.
+            hashed_password (str): The hashed password of the user.
         
         Returns:
-            User: The newly created User object.
+            User: The newly created User object, or None if input is invalid.
         """
-        new_user = User(email=email, hashed_password=hashed_password)
-        self._session.add(new_user)
-        self._session.commit()
-        return new_user
+        if not email or not hashed_password:
+            return
+        user = User(email=email, hashed_password=hashed_password)
+        session = self._session
+        session.add(user)
+        session.commit()
+        return user
 
     def find_user_by(self, **kwargs) -> User:
-        """Find a user by arbitrary keyword arguments.
+        """
+        find_user_by method.
+        Searches for a user in the database based on the provided keyword arguments.
         
         Args:
             **kwargs: Arbitrary keyword arguments to filter the user query.
@@ -60,13 +76,34 @@ class DB:
             User: The first User object matching the criteria.
         
         Raises:
-            NoResultFound: If no user matches the criteria.
             InvalidRequestError: If invalid query arguments are provided.
+            NoResultFound: If no user matches the criteria.
         """
+        if not kwargs or any(x not in VALID_FIELDS for x in kwargs):
+            raise InvalidRequestError
+        session = self._session
         try:
-            user = self._session.query(User).filter_by(**kwargs).one()
-            return user
-        except NoResultFound:
-            raise NoResultFound("No user found matching the criteria.")
-        except Exception as e:
-            raise InvalidRequestError("Invalid query arguments provided.") from e
+            return session.query(User).filter_by(**kwargs).one()
+        except Exception:
+            raise NoResultFound
+
+    def update_user(self, user_id: int, **kwargs) -> None:
+        """
+        update_user method.
+        Updates the attributes of an existing user identified by user_id with the provided
+        keyword arguments.
+        
+        Args:
+            user_id (int): The ID of the user to update.
+            **kwargs: Arbitrary keyword arguments representing the fields to update.
+        
+        Raises:
+            ValueError: If any of the provided fields are invalid.
+        """
+        session = self._session
+        user = self.find_user_by(id=user_id)
+        for k, v in kwargs.items():
+            if k not in VALID_FIELDS:
+                raise ValueError
+            setattr(user, k, v)
+        session.commit()
